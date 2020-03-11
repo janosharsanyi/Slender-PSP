@@ -46,7 +46,7 @@ pages4:position(1, {-1627, 34.681, -660})
 pages5:position(1, {-706, 34.681, 482})
 pages6:position(1, {400, 34.681, -60})
 pages7:position(1, {-450, 34.681, -208})
-pages8:position(1, {-15, 34.681, 980})   
+pages8:position(1, {-15, 34.681, 980})
 
 page1collect = false
 page2collect = false
@@ -56,6 +56,32 @@ page5collect = false
 page6collect = false
 page7collect = false
 page8collect = false
+
+pain = sound.load("assets/sounds/dspopain.mp3")
+
+dsshotgn = sound.load("assets/sounds/dsshotgn.mp3")
+shotgunFrame = 1
+shotgunFrames = 23
+shotgunFrameTimer = timer.new()
+shotgunFrameTimer:reset(0)
+shotgunFiring = false
+shotgunEffectiveRange = 330
+shotgunEffectiveAngleRange = 11
+
+shotgunMinSwayX = -12
+shotgunMaxSwayX = 12
+shotgunSwayX = 0
+shotgunSwayStepX = 1
+
+shotgunMinSwayY = 0
+shotgunMaxSwayY = 6
+shotgunSwayY = 1
+shotgunSwayStepY = 0.5
+
+screenShakeDeltasSize = 10
+screenShakeDeltas = { 0.7, 0.7, 0.7, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3 }
+screenShakeIndex = 1
+screenShake = false
 
 endAnim = false
 
@@ -150,7 +176,7 @@ function render ()
 	screen.clear(color.new(0, 0, 0, 255))
 	amg.mode2d(0)
 
-	
+
 	if currentGameStage == 1 then
 		amg.fog(0.8, 400, color.new(0, 0, 0, 255))
 	elseif currentGameStage == 2 then
@@ -173,20 +199,23 @@ function render ()
 		if not page7collect then pages7:render(2,1) end
 		if not page8collect then pages8:render(2,1) end
 	end
-	
-	
+
+
 	for i=1,132 do
 		Terrain:render(2, i)
 	end
-	
+
 	slendy:render(2, 1)
-	
+
 	amg.fog()
-	
+
 	--On screen stuff here!
 	amg.mode2d(1)
-	
-	
+
+	-- Draw shotgun
+	shotgun[shotgunFrame]:blit(240  + shotgunSwayX,
+		272 - shotgun[shotgunFrame]:geth() / 2 + shotgunSwayY)
+
 	if sanity < 100 then
 		-- Draw static
 		math.randomseed(bgTimer:time())
@@ -195,7 +224,7 @@ function render ()
 		staticImage:blit(240, math.random(100, 172), 192 * (100.0 - sanity) / 100.0)
 		math.randomseed(bgTimer:time())
 		staticImage:blit(240, math.random(100, 172), 192 * (100.0 - sanity) / 100.0)
-		
+
 		math.randomseed(bgTimer:time())
 		num = math.random(0, 2)
 		if num == 0 then
@@ -204,11 +233,11 @@ function render ()
 			staticImage:flipv()
 		end
 	end
-	
+
 	--screen.print(0, 20, "POS: "..playerPos[1].." "..playerPos[3])
 
 	if pageCollectEvent then
-	
+
 		if pageTimer:time() < 3000 then
 			if pagesCollected == 0 then
 				screen.print(240, 136, "Collect all 8 pages", 1, white, gray, __ACENTER)
@@ -218,7 +247,7 @@ function render ()
 		else
 			pageCollectEvent = false
 			pageTimer:reset(0)
-			
+
 			if pagesCollected == 1 then
 				changeStage = true
 				currentGameStage = 1
@@ -232,15 +261,15 @@ function render ()
 				changeStage = true
 				currentGameStage = 4
 			end
-			
+
 			if pagesCollected == 8 then
 				won = true
 			end
-			
+
 		end
 	end
-	
-	
+
+
 	if buttons.released.select then
 		while not buttons.released.cross do
 			screen.print(240, 136, "Paused. Hit X to unpause.", 1, white, gray, __ACENTER)
@@ -264,572 +293,689 @@ function locationTestCheck(location, center, boundX, boundZ)
 	end
 end
 
+function distance(alpha, beta)
+    local phi = math.abs(beta - alpha) % 360
+    if phi > 180 then
+    	return 360 - phi
+    else
+    	return phi
+    end
+end
+
+function shotgunFired()
+	local slendAngle = math.deg(
+		math.atan2(
+			(slendPos[1] - playerPos[1]),
+			(slendPos[3] - playerPos[3])
+		)
+	)
+
+	local slendDistance = math.sqrt(
+		(slendPos[1] - playerPos[1]) * (slendPos[1] - playerPos[1])
+		+ (slendPos[3] - playerPos[3]) * (slendPos[3] - playerPos[3])
+	)
+
+	if slendDistance < shotgunEffectiveRange
+		and distance(playerRot[2], slendAngle) <= shotgunEffectiveAngleRange then
+			-- Hit!
+			pain:play()
+			sanity = 100.0
+			-- Teleport away for a slightly longer time to "heal"
+			slendy:position(1, {-50000, -20, -50000})
+			slendPos = {-50000, -20, -50000}
+			slenderTPTimer:reset(0)
+			slenderTPTimer:start()
+			slenderTPRemaining = math.random(15000, 35000)
+	end
+end
+
+function updateShotgun()
+	if isWalking and locationTest then
+		if isSprinting or currentBuff > 1.0 then
+			shotgunSwayX = shotgunSwayX + (shotgunSwayStepX * 1.5)
+		else
+			shotgunSwayX = shotgunSwayX + shotgunSwayStepX
+		end
+		if shotgunSwayX >= shotgunMaxSwayX or shotgunSwayX <= shotgunMinSwayX then
+			shotgunSwayStepX = shotgunSwayStepX * -1
+		end
+		if shotgunSwayX > shotgunMaxSwayX then
+			shotgunSwayX = shotgunMaxSwayX
+		end
+		if shotgunSwayX < shotgunMinSwayX then
+			shotgunSwayX = shotgunMinSwayX
+		end
+
+		if isSprinting or currentBuff > 1.0 then
+			shotgunSwayY = shotgunSwayY + (shotgunSwayStepY * 1.5)
+		else
+			shotgunSwayY = shotgunSwayY + shotgunSwayStepY
+		end
+		if shotgunSwayY >= shotgunMaxSwayY or shotgunSwayY <= shotgunMinSwayY then
+			shotgunSwayStepY = shotgunSwayStepY * -1
+		end
+		if shotgunSwayY > shotgunMaxSwayY then
+			shotgunSwayY = shotgunMaxSwayY
+		end
+		if shotgunSwayY < shotgunMinSwayY then
+			shotgunSwayY = shotgunMinSwayY
+		end
+	end
+
+	if shotgunFiring then
+		if shotgunFrameTimer:time() > 100 then
+			shotgunFrameTimer:stop()
+			shotgunFrameTimer:reset(0)
+			shotgunFrameTimer:start()
+
+			if shotgunFrame + 1 <= shotgunFrames then
+				shotgunFrame = shotgunFrame + 1
+			else
+				shotgunFrame = 1
+				shotgunFiring = false
+			end
+		end
+	end
+
+	if screenShake then
+		if screenShakeIndex <= screenShakeDeltasSize then
+			playerRot[1] = playerRot[1] + screenShakeDeltas[screenShakeIndex]
+			screenShakeIndex = screenShakeIndex + 1
+		else
+			screenShakeIndex = 1
+			screenShake = false
+			shotgunFired()
+		end
+	end
+
+	if buttons.released.r 
+		and not screenShake 
+		and not dsshotgn:playing() 
+		and not shotgunFiring then
+			dsshotgn:play()
+			shotgunFrameTimer:stop()
+			shotgunFrameTimer:reset(0)
+			shotgunFrameTimer:start()
+			shotgunFiring = true
+			screenShake = true
+	end
+end
+
 function update ()
 	if not won then
-	if sanity <= 0 then
-		won = true
-	end
-	
+		if sanity <= 0 then
+			won = true
+		end
 
-	slenderTPDistance = 1000
-	if currentGameStage == 2 then
-		slenderTPDistance = 700
-	elseif currentGameStage == 3 then
-		slenderTPDistance = 500
-	elseif currentGameStage == 4 then
-		slenderTPDistance = 300
-	end
-	
-	if slenderTPTimer:time() >= slenderTPRemaining then
-		-- TP to random location in radius
-		slenderTPRemaining = math.random(8000, 15000)
-		
-		slenderTPX = math.random(-slenderTPDistance, slenderTPDistance)
-		
-		if math.abs(slenderTPX) < 50 then
-			slenderTPX = slenderTPX * 4
-		end
-		
-		slenderTPZ = math.random(-slenderTPDistance, slenderTPDistance)
-		
-		
-		if math.abs(slenderTPZ) < 50 then
-			slenderTPZ = slenderTPZ * 4
-		end
-		
-		slendy:position(1, {slenderTPX + playerPos[1], -20, slenderTPZ + playerPos[3]})
-		slendPos = {slenderTPX + playerPos[1], -20, slenderTPZ + playerPos[3]}
-		
-		
-		slenderTPTimer:reset(0)
-		slenderTPTimer:start()
-	end
-	
-	if not page1collect then
-		-- CHECK
-		pos = {-795, -1433}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page1collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	if not page2collect then
-		-- CHECK
-		pos = {677, -1514}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page2collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	
-	if not page3collect then
-		-- CHECK
-		pos = {1507, -1050}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page3collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	if not page4collect then
-		-- CHECK
-		pos = {-1627, -660}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page4collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	
-	 
-	
-	if not page5collect then
-		-- CHECK
-		pos = {-706, 482}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page5collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	if not page6collect then
-		-- CHECK
-		pos = {400, -60}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page6collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	if not page7collect then
-		-- CHECK
-		pos = {-450, -208}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page7collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
-	if not page8collect then
-		-- CHECK
-		pos = {-15, 980}
-		check = true
-		check = locationTestCheck(playerPos, pos, 75, 75)
-		
-		if not check then
-			page8collect = true
-			pageTimer:start()
-			pageCollectEvent = true
-			pagesCollected = pagesCollected + 1
-		end
-	end
 
-	if bgTimer:time() >= 300000 and bgTimer:time() < 600000 and currentGameStage == 0 then
-		currentGameStage = 1
-		changeStage = true
-	elseif bgTimer:time() >= 600000 and bgTimer:time() < 900000 and currentGameStage == 1 then
-		currentGameStage = 2
-		changeStage = true
-	elseif bgTimer:time() >= 900000 and bgTimer:time() < 1200000 and currentGameStage == 2 then
-		currentGameStage = 3
-		changeStage = true
-	elseif bgTimer:time() >= 1200000 and bgTimer:time() < 1500000 and currentGameStage == 3 then
-		currentGameStage = 4
-		changeStage = true
-	end
+		slenderTPDistance = 1000
+		if currentGameStage == 2 then
+			slenderTPDistance = 700
+		elseif currentGameStage == 3 then
+			slenderTPDistance = 500
+		elseif currentGameStage == 4 then
+			slenderTPDistance = 300
+		end
 
-	if changeStage then
-		if currentGameStage == 1 then stage1:play(6) end
-		if currentGameStage == 2 then stage2:play(6) end
-		if currentGameStage == 3 then stage3:play(6) end
-		if currentGameStage == 4 then stage4:play(6) end
+		if slenderTPTimer:time() >= slenderTPRemaining then
+			-- TP to random location in radius
+			slenderTPRemaining = math.random(8000, 15000)
 		
-		slenderTPTimer:start()
-		changeStage = false
-	end
+			slenderTPX = math.random(-slenderTPDistance, slenderTPDistance)
+		
+			if math.abs(slenderTPX) < 50 then
+				slenderTPX = slenderTPX * 4
+			end
+		
+			slenderTPZ = math.random(-slenderTPDistance, slenderTPDistance)
+		
+		
+			if math.abs(slenderTPZ) < 50 then
+				slenderTPZ = slenderTPZ * 4
+			end
+		
+			slendy:position(1, {slenderTPX + playerPos[1], -20, slenderTPZ + playerPos[3]})
+			slendPos = {slenderTPX + playerPos[1], -20, slenderTPZ + playerPos[3]}
+		
+		
+			slenderTPTimer:reset(0)
+			slenderTPTimer:start()
+		end
 
-	if buttons.cross or buttons.held.cross then
-		playerRot[1] = playerRot[1] - 0.15 * dt
-	end
-	if buttons.square or buttons.held.square then
-		playerRot[2] = playerRot[2] + 0.15 * dt
-	end
-	if buttons.circle or buttons.held.circle then
-		playerRot[2] = playerRot[2] - 0.15 * dt
-	end
-	if buttons.triangle or buttons.held.triangle then
-		playerRot[1] = playerRot[1] + 0.15 * dt
-	end
-	
-	if playerRot[1] < -89 then
-		playerRot[1] = -89
-	end
-	
-	if playerRot[1] > 89 then
-		playerRot[1] = 89
-	end
-	
-	if buttons.held.up or buttons.up or buttons.down or buttons.held.down then
-		
-		
-		if buttons.held.down or buttons.down then
-			fovChange += 0.5
+		if not page1collect then
+			-- CHECK
+			pos = {-795, -1433}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page1collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+		if not page2collect then
+			-- CHECK
+			pos = {677, -1514}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page2collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+
+		if not page3collect then
+			-- CHECK
+			pos = {1507, -1050}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page3collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+		if not page4collect then
+			-- CHECK
+			pos = {-1627, -660}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page4collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+
+
+
+		if not page5collect then
+			-- CHECK
+			pos = {-706, 482}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page5collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+		if not page6collect then
+			-- CHECK
+			pos = {400, -60}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page6collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+		if not page7collect then
+			-- CHECK
+			pos = {-450, -208}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page7collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+		if not page8collect then
+			-- CHECK
+			pos = {-15, 980}
+			check = true
+			check = locationTestCheck(playerPos, pos, 75, 75)
+
+			if not check then
+				page8collect = true
+				pageTimer:start()
+				pageCollectEvent = true
+				pagesCollected = pagesCollected + 1
+			end
+		end
+
+		if bgTimer:time() >= 300000 and bgTimer:time() < 600000 and currentGameStage == 0 then
+			currentGameStage = 1
+			changeStage = true
+		elseif bgTimer:time() >= 600000 and bgTimer:time() < 900000 and currentGameStage == 1 then
+			currentGameStage = 2
+			changeStage = true
+		elseif bgTimer:time() >= 900000 and bgTimer:time() < 1200000 and currentGameStage == 2 then
+			currentGameStage = 3
+			changeStage = true
+		elseif bgTimer:time() >= 1200000 and bgTimer:time() < 1500000 and currentGameStage == 3 then
+			currentGameStage = 4
+			changeStage = true
+		end
+
+		if changeStage then
+			if currentGameStage == 1 then stage1:play(6) end
+			if currentGameStage == 2 then stage2:play(6) end
+			if currentGameStage == 3 then stage3:play(6) end
+			if currentGameStage == 4 then stage4:play(6) end
+
+			slenderTPTimer:start()
+			changeStage = false
+		end
+
+		if buttons.cross or buttons.held.cross then
+			playerRot[1] = playerRot[1] - 0.15 * dt
+		end
+		if buttons.square or buttons.held.square then
+			playerRot[2] = playerRot[2] + 0.15 * dt
+		end
+		if buttons.circle or buttons.held.circle then
+			playerRot[2] = playerRot[2] - 0.15 * dt
+		end
+		if buttons.triangle or buttons.held.triangle then
+			playerRot[1] = playerRot[1] + 0.15 * dt
+		end
+
+		if playerRot[1] < -35 then
+			playerRot[1] = -35
+		end
+
+		if playerRot[1] > 35 then
+			playerRot[1] = 35
+		end
+
+		if playerRot[2] >= 360.0 then
+			playerRot[2] = playerRot[2] - 360.0
+		end
+
+		if playerRot[2] < 0.0 then
+			playerRot[2] = playerRot[2] + 360.0
+		end
+
+		if buttons.held.up or buttons.up or buttons.down or buttons.held.down then
+
+
+			if buttons.held.down or buttons.down then
+				fovChange += 0.5
+			else
+				fovChange -= 0.5
+			end
+
+			if fovChange < -45 then
+				fovChange = -45
+			end
+
+			if fovChange > 0 then
+				fovChange = 0
+			end
+
+			amg.perspective(75 + fovChange)
+
+		end
+
+		playerEye = {0, 0, -1}
+
+
+		sinTheta = math.sin(math.rad(playerRot[2]))
+		cosTheta = math.cos(math.rad(playerRot[2]))
+
+		playerEye[1] = sinTheta
+		playerEye[3] = cosTheta
+
+		x = -playerEye[3]
+		y = 0
+		z = playerEye[1]
+
+		playerEye2 = {0, 0, 0}
+
+		sinTheta = math.sin(math.rad(playerRot[1]))
+		cosTheta = math.cos(math.rad(playerRot[1]))
+
+		playerEye2[1] = (cosTheta + (1 - cosTheta) * x * x)			* playerEye[1];
+		playerEye2[1] += ((1 - cosTheta) * x * y - z * sinTheta)	* playerEye[2];
+		playerEye2[1] += ((1 - cosTheta) * x * z + y * sinTheta)	* playerEye[3];
+
+		playerEye2[2] = ((1 - cosTheta) * x * y + z * sinTheta)	* playerEye[1];
+		playerEye2[2] += (cosTheta + (1 - cosTheta) * y * y)		* playerEye[2];
+		playerEye2[2] += ((1 - cosTheta) * y * z - x * sinTheta)	* playerEye[3];
+
+		playerEye2[3] = ((1 - cosTheta) * x * z - y * sinTheta)	* playerEye[1];
+		playerEye2[3] += ((1 - cosTheta) * y * z + x * sinTheta)	* playerEye[2];
+		playerEye2[3] += (cosTheta + (1 - cosTheta) * z * z)		* playerEye[3];
+
+		walkSpeed = 0.02 * currentBuff * 1.3 * 5
+
+		if isSprinting then
+			walkSpeed = walkSpeed * 2.5
+		end
+
+		newLocation = {0, 0, 0}
+		newLocation[1] = playerPos[1]
+		newLocation[3] = playerPos[3]
+
+		if buttons.analogx > 40 or buttons.analogx < -40 then
+			newLocation[1] = newLocation[1] - math.sin(math.rad(playerRot[2] - 270)) * walkSpeed * dt * buttons.analogx / 128
+			newLocation[3] = newLocation[3] - math.cos(math.rad(playerRot[2] - 270)) * walkSpeed * dt * buttons.analogx / 128
+		end
+		if buttons.analogy > 40 or buttons.analogy < -40 then
+			newLocation[1] = newLocation[1] - math.sin(math.rad(playerRot[2])) * walkSpeed * dt * buttons.analogy / 128
+			newLocation[3] = newLocation[3] - math.cos(math.rad(playerRot[2])) * walkSpeed * dt * buttons.analogy / 128
+		end
+
+		-- Test Location
+		locationTest = true
+
+		if newLocation[1] > 2000 or newLocation[1] < -2000 or newLocation[3] > 2000 or newLocation[3] < -2000 then
+			locationTest = false
+		end
+
+
+		-- Q1
+
+		locationTest = locationTest and locationTestCheck(newLocation, { 380, -1770 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 580, -1880 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 790, -2000 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1090, -1910 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1160, -1590 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1400, -1650 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1390, -1840 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1410, -1470 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1610, -1430 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1850, -1430 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1910, -1780 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1690, -1750 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1760, -1970 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1910, -1190 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1780, -1000 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1932, -630 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1770, -80 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 920, -850 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 710, -880 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 705, -1055 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 463, -993 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 30, -990 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 210, -860 }, 32, 32)
+
+		--Q2
+		locationTest = locationTest and locationTestCheck(newLocation, { 1700, 130 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1890, 1290 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1900, 1680 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1540, 1810 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1680, 1530 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1780, 970 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1830, 480 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1230, 420 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1330, 230 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1400, 1550 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1620, 1310 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 910, 1550 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 830, 1770 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1150, 1710 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 600, 1600 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 230, 1760 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 230, 1760 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 300, 1560 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 880, 960 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1020, 680 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 740, 690 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 960, 470 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 580, 470 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 670, 240 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 1020, 240 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 0, 240 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 0, 1600 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { 120, 600 }, 32, 32)
+
+		--Q3
+		locationTest = locationTest and locationTestCheck(newLocation, { -80, 540 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -60, 760 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -260, 380 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -330, 690 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -330, 920 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -500, 440 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -710, 230 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -750, 1540 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -680, 1820 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -480, 1710 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -980, 1735 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1290, 1670 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1580, 1580 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1740, 1337 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1810, 1620 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1660, 1800 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1860, 920 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1860, 690 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1600, 760 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1630, 530 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1780, 370 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1740, 100 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1540, 230 }, 32, 32)
+
+		--Q4
+		locationTest = locationTest and locationTestCheck(newLocation, { -1450, -40 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1890, -65 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1890, -365 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1650, -200 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1900, -770 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1900, -1075 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1440, -920 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -780, -850 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -540, -990 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -290, -1060 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -290, -880 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -60, -850 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1800, -1850 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1040, -1880 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -720, -1940 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -810, -1730 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1290, -1730 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1570, -1730 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -500, -1770 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1510, -1490 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1510, -1280 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1790, -1560 }, 32, 32)
+		locationTest = locationTest and locationTestCheck(newLocation, { -1680, -1150 }, 32, 32)
+
+		-- LANDMARKS
+
+		locationTest = locationTest and locationTestCheck(newLocation, { 680, -1540 }, 48, 48) -- Big tree :D
+		locationTest = locationTest and locationTestCheck(newLocation, { 1505, -1110 }, 128, 32) -- Shed :D
+		locationTest = locationTest and locationTestCheck(newLocation, { 1730, -650 }, 80, 170) -- Cybertruck #1 :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -710, 500 }, 16, 16) -- LOGS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -557, 575 }, 16, 16) -- LOGS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -320, 770 }, 16, 16) -- LOGS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -790, 690 }, 16, 16) -- LOGS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -915, 860 }, 16, 16) -- LOGS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -765, 940 }, 16, 16) -- LOGS :D
+
+
+		locationTest = locationTest and locationTestCheck(newLocation, { -1440, 1190 }, 8, 160) -- CROSS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -1440, 1190 }, 160, 8) -- CROSS :D
+
+
+		locationTest = locationTest and locationTestCheck(newLocation, { -1610, -530 }, 200, 200) -- ROCKS :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -800, -1350 }, 90, 90) -- SILO :D
+
+
+		locationTest = locationTest and locationTestCheck(newLocation, { -700, -550 }, 150, 50) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -700, -370 }, 150, 50) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -700, -210 }, 150, 50) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -700, -30 }, 150, 50) -- tanker :D
+
+		locationTest = locationTest and locationTestCheck(newLocation, { -210, -550 }, 150, 50) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -210, -370 }, 150, 50) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -210, -210 }, 150, 50) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -210, -30 }, 150, 50) -- tanker :D
+
+		locationTest = locationTest and locationTestCheck(newLocation, { -460, -50 }, 50, 150) -- tanker :D
+		locationTest = locationTest and locationTestCheck(newLocation, { -460, -500 }, 50, 150) -- tanker :D
+
+		--Bathrooms! - okay
+		locationTest = locationTest and locationTestCheck(newLocation, { 980, -450 }, 7, 105) -- Wall type 1
+		locationTest = locationTest and locationTestCheck(newLocation, { 760, -450 }, 7, 105) -- Wall type 1
+		locationTest = locationTest and locationTestCheck(newLocation, { 600, -450 }, 7, 105) -- Wall type 1
+		locationTest = locationTest and locationTestCheck(newLocation, { 330, -450 }, 7, 105) -- Wall type 1
+		locationTest = locationTest and locationTestCheck(newLocation, { 340, -130 }, 7, 105) -- Wall type 1
+		locationTest = locationTest and locationTestCheck(newLocation, { 720, -130 }, 7, 105) -- Wall type 1
+
+		locationTest = locationTest and locationTestCheck(newLocation, { 480, -175 }, 7, 70) -- Wall type 2
+		locationTest = locationTest and locationTestCheck(newLocation, { 845, -175 }, 7, 70) -- Wall type 2
+		locationTest = locationTest and locationTestCheck(newLocation, { 840, -410 }, 7, 70) -- Wall type 2
+		locationTest = locationTest and locationTestCheck(newLocation, { 470, -410 }, 7, 70) -- Wall type 2
+
+		locationTest = locationTest and locationTestCheck(newLocation, { 410, -560 }, 70, 7) -- Wall type 3
+		locationTest = locationTest and locationTestCheck(newLocation, { 410, -340 }, 70, 7) -- Wall type 3
+		locationTest = locationTest and locationTestCheck(newLocation, { 410, -250 }, 70, 7) -- Wall type 3
+		locationTest = locationTest and locationTestCheck(newLocation, { 915, -250 }, 70, 7) -- Wall type 3
+		locationTest = locationTest and locationTestCheck(newLocation, { 910, -340 }, 70, 7) -- Wall type 3
+		locationTest = locationTest and locationTestCheck(newLocation, { 910, -30 }, 70, 7) -- Wall type 3
+
+		locationTest = locationTest and locationTestCheck(newLocation, { 320, -245 }, 80, 7) -- Wall type 4
+		locationTest = locationTest and locationTestCheck(newLocation, { 680, -340 }, 80, 7) -- Wall type 4
+
+		locationTest = locationTest and locationTestCheck(newLocation, { 450, -35 }, 110, 7) -- Wall type 5
+		locationTest = locationTest and locationTestCheck(newLocation, { 870, -560 }, 110, 7) -- Wall type 5
+
+		if locationTest then
+			playerPos[1] = newLocation[1]
+			playerPos[3] = newLocation[3]
+		end
+
+		if buttons.analogx > 40 or buttons.analogx < -40 or buttons.analogy > 40 or buttons.analogy < -40 then
+			if not isWalking then
+				isWalking = true
+				--step[math.random(1, 12)]:play(5)
+				stepTimer:reset(0)
+				stepTimer:start()
+			end
 		else
-			fovChange -= 0.5
+			isWalking = false
 		end
-		
-		if fovChange < -45 then
-			fovChange = -45
+
+
+		if isSprinting then
+			stepTimeNeeded = 500
+		else
+			stepTimeNeeded = 800
 		end
-		
-		if fovChange > 0 then
-			fovChange = 0
-		end
-		
-		amg.perspective(75 + fovChange)
-		
-	end
-	
-	playerEye = {0, 0, -1}
-	
-	
-	sinTheta = math.sin(math.rad(playerRot[2]))
-	cosTheta = math.cos(math.rad(playerRot[2]))
-	
-	playerEye[1] = sinTheta
-	playerEye[3] = cosTheta
-	
-	x = -playerEye[3]
-	y = 0
-	z = playerEye[1]
-	
-	playerEye2 = {0, 0, 0}
-	
-	sinTheta = math.sin(math.rad(playerRot[1]))
-	cosTheta = math.cos(math.rad(playerRot[1]))
-	
-	playerEye2[1] = (cosTheta + (1 - cosTheta) * x * x)			* playerEye[1];
-	playerEye2[1] += ((1 - cosTheta) * x * y - z * sinTheta)	* playerEye[2];
-	playerEye2[1] += ((1 - cosTheta) * x * z + y * sinTheta)	* playerEye[3];
 
-	playerEye2[2] = ((1 - cosTheta) * x * y + z * sinTheta)	* playerEye[1];
-	playerEye2[2] += (cosTheta + (1 - cosTheta) * y * y)		* playerEye[2];
-	playerEye2[2] += ((1 - cosTheta) * y * z - x * sinTheta)	* playerEye[3];
-
-	playerEye2[3] = ((1 - cosTheta) * x * z - y * sinTheta)	* playerEye[1];
-	playerEye2[3] += ((1 - cosTheta) * y * z + x * sinTheta)	* playerEye[2];
-	playerEye2[3] += (cosTheta + (1 - cosTheta) * z * z)		* playerEye[3];
-	
-	walkSpeed = 0.02 * currentBuff * 1.3
-	
-	if isSprinting then
-		walkSpeed = walkSpeed * 2.5 
-	end
-	
-	newLocation = {0, 0, 0}
-	newLocation[1] = playerPos[1]
-	newLocation[3] = playerPos[3]
-
-	if buttons.analogx > 40 or buttons.analogx < -40 then
-		newLocation[1] = newLocation[1] - math.sin(math.rad(playerRot[2] - 270)) * walkSpeed * dt * buttons.analogx / 128
-		newLocation[3] = newLocation[3] - math.cos(math.rad(playerRot[2] - 270)) * walkSpeed * dt * buttons.analogx / 128
-	end
-	if buttons.analogy > 40 or buttons.analogy < -40 then
-		newLocation[1] = newLocation[1] - math.sin(math.rad(playerRot[2])) * walkSpeed * dt * buttons.analogy / 128
-		newLocation[3] = newLocation[3] - math.cos(math.rad(playerRot[2])) * walkSpeed * dt * buttons.analogy / 128
-	end
-	
-	-- Test Location
-	locationTest = true
-
-	if newLocation[1] > 2000 or newLocation[1] < -2000 or newLocation[3] > 2000 or newLocation[3] < -2000 then
-		locationTest = false
-	end
-	
-	
-	-- Q1
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { 380, -1770 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 580, -1880 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 790, -2000 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1090, -1910 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1160, -1590 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1400, -1650 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1390, -1840 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1410, -1470 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1610, -1430 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1850, -1430 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1910, -1780 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1690, -1750 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1760, -1970 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1910, -1190 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1780, -1000 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1932, -630 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1770, -80 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 920, -850 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 710, -880 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 705, -1055 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 463, -993 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 30, -990 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 210, -860 }, 32, 32)
-	
-	--Q2
-	locationTest = locationTest and locationTestCheck(newLocation, { 1700, 130 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1890, 1290 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1900, 1680 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1540, 1810 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1680, 1530 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1780, 970 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1830, 480 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1230, 420 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1330, 230 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1400, 1550 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1620, 1310 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 910, 1550 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 830, 1770 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1150, 1710 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 600, 1600 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 230, 1760 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 230, 1760 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 300, 1560 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 880, 960 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1020, 680 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 740, 690 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 960, 470 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 580, 470 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 670, 240 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 1020, 240 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 0, 240 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 0, 1600 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { 120, 600 }, 32, 32)
-	
-	--Q3
-	locationTest = locationTest and locationTestCheck(newLocation, { -80, 540 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -60, 760 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -260, 380 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -330, 690 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -330, 920 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -500, 440 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -710, 230 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -750, 1540 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -680, 1820 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -480, 1710 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -980, 1735 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1290, 1670 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1580, 1580 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1740, 1337 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1810, 1620 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1660, 1800 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1860, 920 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1860, 690 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1600, 760 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1630, 530 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1780, 370 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1740, 100 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1540, 230 }, 32, 32)
-	
-	--Q4
-	locationTest = locationTest and locationTestCheck(newLocation, { -1450, -40 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1890, -65 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1890, -365 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1650, -200 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1900, -770 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1900, -1075 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1440, -920 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -780, -850 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -540, -990 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -290, -1060 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -290, -880 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -60, -850 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1800, -1850 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1040, -1880 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -720, -1940 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -810, -1730 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1290, -1730 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1570, -1730 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -500, -1770 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1510, -1490 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1510, -1280 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1790, -1560 }, 32, 32)
-	locationTest = locationTest and locationTestCheck(newLocation, { -1680, -1150 }, 32, 32)
-	
-	-- LANDMARKS
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { 680, -1540 }, 48, 48) -- Big tree :D
-	locationTest = locationTest and locationTestCheck(newLocation, { 1505, -1110 }, 128, 32) -- Shed :D
-	locationTest = locationTest and locationTestCheck(newLocation, { 1730, -650 }, 80, 170) -- Cybertruck #1 :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -710, 500 }, 16, 16) -- LOGS :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -557, 575 }, 16, 16) -- LOGS :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -320, 770 }, 16, 16) -- LOGS :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -790, 690 }, 16, 16) -- LOGS :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -915, 860 }, 16, 16) -- LOGS :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -765, 940 }, 16, 16) -- LOGS :D
-	
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { -1440, 1190 }, 8, 160) -- CROSS :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -1440, 1190 }, 160, 8) -- CROSS :D
-	
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { -1610, -530 }, 200, 200) -- ROCKS :D 
-	locationTest = locationTest and locationTestCheck(newLocation, { -800, -1350 }, 90, 90) -- SILO :D
-	
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { -700, -550 }, 150, 50) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -700, -370 }, 150, 50) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -700, -210 }, 150, 50) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -700, -30 }, 150, 50) -- tanker :D
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { -210, -550 }, 150, 50) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -210, -370 }, 150, 50) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -210, -210 }, 150, 50) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -210, -30 }, 150, 50) -- tanker :D
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { -460, -50 }, 50, 150) -- tanker :D
-	locationTest = locationTest and locationTestCheck(newLocation, { -460, -500 }, 50, 150) -- tanker :D
-	
-	--Bathrooms! - okay
-	locationTest = locationTest and locationTestCheck(newLocation, { 980, -450 }, 7, 105) -- Wall type 1
-	locationTest = locationTest and locationTestCheck(newLocation, { 760, -450 }, 7, 105) -- Wall type 1
-	locationTest = locationTest and locationTestCheck(newLocation, { 600, -450 }, 7, 105) -- Wall type 1
-	locationTest = locationTest and locationTestCheck(newLocation, { 330, -450 }, 7, 105) -- Wall type 1
-	locationTest = locationTest and locationTestCheck(newLocation, { 340, -130 }, 7, 105) -- Wall type 1
-	locationTest = locationTest and locationTestCheck(newLocation, { 720, -130 }, 7, 105) -- Wall type 1
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { 480, -175 }, 7, 70) -- Wall type 2
-	locationTest = locationTest and locationTestCheck(newLocation, { 845, -175 }, 7, 70) -- Wall type 2
-	locationTest = locationTest and locationTestCheck(newLocation, { 840, -410 }, 7, 70) -- Wall type 2
-	locationTest = locationTest and locationTestCheck(newLocation, { 470, -410 }, 7, 70) -- Wall type 2
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { 410, -560 }, 70, 7) -- Wall type 3
-	locationTest = locationTest and locationTestCheck(newLocation, { 410, -340 }, 70, 7) -- Wall type 3
-	locationTest = locationTest and locationTestCheck(newLocation, { 410, -250 }, 70, 7) -- Wall type 3
-	locationTest = locationTest and locationTestCheck(newLocation, { 915, -250 }, 70, 7) -- Wall type 3
-	locationTest = locationTest and locationTestCheck(newLocation, { 910, -340 }, 70, 7) -- Wall type 3
-	locationTest = locationTest and locationTestCheck(newLocation, { 910, -30 }, 70, 7) -- Wall type 3
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { 320, -245 }, 80, 7) -- Wall type 4
-	locationTest = locationTest and locationTestCheck(newLocation, { 680, -340 }, 80, 7) -- Wall type 4
-	
-	locationTest = locationTest and locationTestCheck(newLocation, { 450, -35 }, 110, 7) -- Wall type 5
-	locationTest = locationTest and locationTestCheck(newLocation, { 870, -560 }, 110, 7) -- Wall type 5
-	
-	if locationTest then
-		playerPos[1] = newLocation[1]
-		playerPos[3] = newLocation[3]
-	end
-	
-	if buttons.analogx > 40 or buttons.analogx < -40 or buttons.analogy > 40 or buttons.analogy < -40 then
-		if not isWalking then
-			isWalking = true
+		if isWalking and stepTimer:time() > stepTimeNeeded then
 			--step[math.random(1, 12)]:play(5)
 			stepTimer:reset(0)
 			stepTimer:start()
 		end
-	else
-		isWalking = false
-	end
-	
-	
-	if isSprinting then
-		stepTimeNeeded = 500
-	else
-		stepTimeNeeded = 800
-	end
-	
-	if isWalking and stepTimer:time() > stepTimeNeeded then
-		--step[math.random(1, 12)]:play(5)
-		stepTimer:reset(0)
-		stepTimer:start()
-	end
-	
-	if buttons.released.start then
-		isSprinting = not isSprinting
-	end
-	
-	if isWalking then
-		if not isSprinting then
-			stamina = stamina + 2 * dt / 1000 * 60
+
+		if buttons.released.start then
+			isSprinting = not isSprinting
 		end
-	else
-		stamina = stamina + 4 * dt / 1000 * 60
-	end
-	
-	if isSprinting then
-		stamina = stamina - 4 * dt / 1000 * 60
-		
-		if stamina < 500 and not isPanting then
-			isPanting = true
-			pant:play(2)
+
+		if isWalking then
+			if not isSprinting then
+				stamina = stamina + 2 * dt / 1000 * 60
+			end
+		else
+			stamina = stamina + 4 * dt / 1000 * 60
 		end
 		
-		if stamina < 0 then
-			stamina = 0
-			isSprinting = false
-		end
-	end
-	if stamina > 2500 then
-		stamina = 2500
-	end
-	
-	if stamina > 500 and isPanting then
-		isPanting = false
-		pant:stop()
-	end
-	
-	if not scareEvent and sanity < 80.0 and sanity > 70.0 then
-		scareEvent = true
-	else
-		scareEvent = false
-	end
-	
-	if not scared and scareTimer:time() > 7500 and scareEvent then
-		scareNoise:play(1)
-		scared = true
-		currentBuff = 2.0
-		scareEvent = false
+		if isSprinting then
+			stamina = stamina - 4 * dt / 1000 * 60
 		
-		scareTimer:reset(0)
-		scareTimer:start()
+			if stamina < 500 and not isPanting then
+				isPanting = true
+				pant:play(2)
+			end
 		
-		stamina = stamina + 500
-	end
-	
-	if scared and scareTimer:time() > 3750 then
-		scared = false
-		currentBuff = 1
-	end
-	
-	unitEye = {}
-	unitEye[1] = playerEye2[1]
-	unitEye[2] = playerEye2[2]
-	unitEye[3] = playerEye2[3] 
-
-	length = math.sqrt(playerEye2[1] * playerEye2[1] + playerEye2[2] * playerEye2[2] + playerEye2[3] * playerEye2[3])
-
-	unitEye[1] = unitEye[1] / length
-	unitEye[2] = unitEye[2] / length
-	unitEye[3] = unitEye[3] / length
-
-	playerEye[1] = playerEye2[1] + playerPos[1]
-	playerEye[2] = playerEye2[2] + playerPos[2]
-	playerEye[3] = playerEye2[3] + playerPos[3]
-	
-	cam3d.position(player, playerPos)
-
-	cam3d.eye(player, playerEye)
-	cam3d.up(player, playerUp)
-	
-	if sanity < 100.0 and not static:playing() then
-		static:play(2)
-	elseif sanity == 100.0 then
-		static:stop()
-	end
-	
-	static:vol(100 - sanity)
-	
-	sanity += 0.01 * dt
-	
-	if sanity > 100 then
-		sanity = 100
-	end
-	
-	if math.abs(slendPos[1] - playerPos[1]) < 300 and math.abs(slendPos[3] - playerPos[3]) < 300 then
-		sanity -= 0.016 * dt
-		if math.abs(slendPos[1] - playerPos[1]) < 50 and math.abs(slendPos[3] - playerPos[3]) < 50 then
-			won = true
+			if stamina < 0 then
+				stamina = 0
+				isSprinting = false
+			end
 		end
-	end
-	
+		if stamina > 2500 then
+			stamina = 2500
+		end
+		
+		if stamina > 500 and isPanting then
+			isPanting = false
+			pant:stop()
+		end
+		
+		if not scareEvent and sanity < 80.0 and sanity > 70.0 then
+			scareEvent = true
+		else
+			scareEvent = false
+		end
+		
+		if not scared and scareTimer:time() > 7500 and scareEvent then
+			scareNoise:play(1)
+			scared = true
+			currentBuff = 2.0
+			scareEvent = false
+		
+			scareTimer:reset(0)
+			scareTimer:start()
+		
+			stamina = stamina + 500
+		end
+		
+		if scared and scareTimer:time() > 3750 then
+			scared = false
+			currentBuff = 1
+		end
+
+		unitEye = {}
+		unitEye[1] = playerEye2[1]
+		unitEye[2] = playerEye2[2]
+		unitEye[3] = playerEye2[3]
+
+		length = math.sqrt(playerEye2[1] * playerEye2[1] + playerEye2[2] * playerEye2[2] + playerEye2[3] * playerEye2[3])
+
+		unitEye[1] = unitEye[1] / length
+		unitEye[2] = unitEye[2] / length
+		unitEye[3] = unitEye[3] / length
+
+		playerEye[1] = playerEye2[1] + playerPos[1]
+		playerEye[2] = playerEye2[2] + playerPos[2]
+		playerEye[3] = playerEye2[3] + playerPos[3]
+
+		cam3d.position(player, playerPos)
+
+		cam3d.eye(player, playerEye)
+		cam3d.up(player, playerUp)
+
+		if sanity < 100.0 and not static:playing() then
+			static:play(2)
+		elseif sanity == 100.0 then
+			static:stop()
+		end
+		
+		static:vol(100 - sanity)
+		
+		sanity += 0.01 * dt
+		
+		if sanity > 100 then
+			sanity = 100
+		end
+		
+		if math.abs(slendPos[1] - playerPos[1]) < 300 and math.abs(slendPos[3] - playerPos[3]) < 300 then
+			sanity -= 0.016 * dt
+			if math.abs(slendPos[1] - playerPos[1]) < 50 and math.abs(slendPos[3] - playerPos[3]) < 50 then
+				won = true
+			end
+		end
+		
+		updateShotgun()
 	end
 	
 	if won and not deathSound:playing() then
@@ -842,23 +988,24 @@ function update ()
 	end
 	
 	if deathTimer:time() >= 4000 then
+		deathSound:stop()
 		endAnim = true
 	end
-	
 end
 
 while true do
 	update()
 	render()
-	
+
 	dt = deltaTimer:time()
 	deltaTimer:reset(0)
 	deltaTimer:start()
-	
+
 	if won and endAnim then
-		os.exit()
+		-- os.exit()
+		break
 	end
-	
+
 end
 
 amg.finish()

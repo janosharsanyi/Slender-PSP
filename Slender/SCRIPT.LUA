@@ -1,6 +1,36 @@
 collectgarbage()
 os.cpu(333)
-splash.old("assets/titleFull.png")
+--splash.old("assets/titleFull.png")
+
+shotgun = {image.load("./assets/coachgun/coachgun1.png")
+	,image.load("./assets/coachgun/coachgun2.png")
+	,image.load("./assets/coachgun/coachgun3.png")
+	,image.load("./assets/coachgun/coachgun4.png")
+	,image.load("./assets/coachgun/coachgun5.png")
+	,image.load("./assets/coachgun/coachgun6.png")
+	,image.load("./assets/coachgun/coachgun7.png")
+	,image.load("./assets/coachgun/coachgun8.png")
+	,image.load("./assets/coachgun/coachgun9.png")
+	,image.load("./assets/coachgun/coachgun10.png")
+	,image.load("./assets/coachgun/coachgun11.png")
+	,image.load("./assets/coachgun/coachgun12.png")
+	,image.load("./assets/coachgun/coachgun13.png")
+	,image.load("./assets/coachgun/coachgun14.png")
+	,image.load("./assets/coachgun/coachgun15.png")
+	,image.load("./assets/coachgun/coachgun16.png")
+	,image.load("./assets/coachgun/coachgun17.png")
+	,image.load("./assets/coachgun/coachgun18.png")
+	,image.load("./assets/coachgun/coachgun19.png")
+	,image.load("./assets/coachgun/coachgun20.png")
+	,image.load("./assets/coachgun/coachgun21.png")
+	,image.load("./assets/coachgun/coachgun22.png")
+	,image.load("./assets/coachgun/coachgun23.png")
+}
+
+for i=1,23 do
+	shotgun[i]:center()
+	--pages[i]:scale(200)
+end
 
 pages = {image.load("./assets/pages/page1.png")
 ,image.load("./assets/pages/page2.png")
@@ -78,38 +108,37 @@ menu:play()
 
 while true do
 	buttons.read()
-	screen.clear(color.new(0, 0, 0, 255))
 	
 	-- Start ends game (lol)
 	if buttons.released.start then break end
-	
-	if buttons.released.up then 
-		selection = selection - 1  
+
+	if buttons.released.up then
+		selection = selection - 1
 		--button:play()
 	end
-	
-	if buttons.released.down then 
-		selection = selection + 1 
+
+	if buttons.released.down then
+		selection = selection + 1
 		--button:play()
 	end
-	
+
 	if selection < 0 then selection = 0 end
 	if selection > 2 then selection = 2 end
-	
+
 	if buttons.released.cross then
 		--button:play()
 		if selection == 0 then
 			menu:stop()
-			
+	
 			dofile("INTRO.LUA")
 			dofile("GAME.LUA")
-			
+	
 			menu:play()
 		elseif selection == 1 then
 			menu:stop()
-			
+	
 			dofile("CREDITS.LUA")
-			
+	
 			menu:play()
 		else
 			os.exit()
@@ -119,8 +148,10 @@ while true do
 	if buttons.released.triangle then
 		meme = true
 	end
-	
+
 	-- Background effect
+	screen.clear(color.new(0, 0, 0, 255))
+
 	if bgTimer:time() < (0.2 * timeToNextImg) then
 		alphaCurve = bgTimer:time() / (0.2 * timeToNextImg) * 96
 	elseif bgTimer:time() >= (0.2 * timeToNextImg) and bgTimer:time() < (0.8 * timeToNextImg) then
@@ -128,16 +159,16 @@ while true do
 	elseif bgTimer:time() >= (0.8 * timeToNextImg) then
 		alphaCurve = 96 - ( (bgTimer:time() - 0.8 * timeToNextImg) / (0.2 * timeToNextImg) * 96)
 	end
-	
+
 	pages[pageNum]:blit(x, y, alphaCurve)
-	
+
 	x = x + vX / 2
 	y = y + vY / 2
-	
+
 	if bgTimer:time() >= timeToNextImg then
 		bgTimer:reset(0)
 		bgTimer:start()
-		
+
 		timeToNextImg = math.random(2000, 4000)
 		vX = math.random(-2, 2)
 		vY = math.random(-1, 1)
@@ -146,16 +177,16 @@ while true do
 		y = math.random(80, 200)
 
 		newPageNum = math.random(1, 8)
-		
+
 		if pageNum == newPageNum then
 			pageNum = math.random(1, 8)
 		else
 			pageNum = newPageNum
 		end
 	end
-	
+
 	titlePage:blit(-240, -34)
-	
+
 	if selection == 0 then
 	screen.print(240, 140, "Start", 1, red, redShad, __ACENTER)
 	screen.print(240, 180, "Credits", 1, white, gray, __ACENTER)
@@ -169,6 +200,6 @@ while true do
 	screen.print(240, 180, "Credits", 1, white, gray, __ACENTER)
 	screen.print(240, 220, "Exit", 1, red, redShad, __ACENTER)
 	end
-	
+
 	screen.flip()
 end
