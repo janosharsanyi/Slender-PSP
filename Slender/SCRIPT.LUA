@@ -1,6 +1,6 @@
 collectgarbage()
 os.cpu(333)
---splash.old("assets/titleFull.png")
+splash.old("assets/titleFull.png")
 
 shotgun = {image.load("./assets/coachgun/coachgun1.png")
 	,image.load("./assets/coachgun/coachgun2.png")
@@ -29,7 +29,6 @@ shotgun = {image.load("./assets/coachgun/coachgun1.png")
 
 for i=1,23 do
 	shotgun[i]:center()
-	--pages[i]:scale(200)
 end
 
 pages = {image.load("./assets/pages/page1.png")
