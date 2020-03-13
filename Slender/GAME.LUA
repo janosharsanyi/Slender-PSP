@@ -57,8 +57,6 @@ page6collect = false
 page7collect = false
 page8collect = false
 
-pain = sound.load("assets/sounds/dspopain.mp3")
-
 dsshotgn = sound.load("assets/sounds/dsshotgn.mp3")
 shotgunFrame = 1
 shotgunFrames = 23
@@ -72,11 +70,13 @@ shotgunMinSwayX = -12
 shotgunMaxSwayX = 12
 shotgunSwayX = 0
 shotgunSwayStepX = 1
+shotgunSwayDirectionX = 1
 
 shotgunMinSwayY = 0
 shotgunMaxSwayY = 6
 shotgunSwayY = 1
 shotgunSwayStepY = 0.5
+shotgunSwayDirectionY = 1
 
 screenShakeDeltasSize = 10
 screenShakeDeltas = { 0.7, 0.7, 0.7, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3 }
@@ -235,6 +235,9 @@ function render ()
 	end
 
 	--screen.print(0, 20, "POS: "..playerPos[1].." "..playerPos[3])
+	if isPanting then
+		screen.print(240, 20, "You are too exhausted to run.", 1, white, gray, __ACENTER)
+	end
 
 	if pageCollectEvent then
 
@@ -318,7 +321,6 @@ function shotgunFired()
 	if slendDistance < shotgunEffectiveRange
 		and distance(playerRot[2], slendAngle) <= shotgunEffectiveAngleRange then
 			-- Hit!
-			pain:play()
 			sanity = 100.0
 			-- Teleport away for a slightly longer time to "heal"
 			slendy:position(1, {-50000, -20, -50000})
@@ -331,13 +333,19 @@ end
 
 function updateShotgun()
 	if isWalking and locationTest then
-		if isSprinting or currentBuff > 1.0 then
-			shotgunSwayX = shotgunSwayX + (shotgunSwayStepX * 1.5)
-		else
-			shotgunSwayX = shotgunSwayX + shotgunSwayStepX
+		local swayBuff = 1
+
+		if isPanting then
+			swayBuff = 0.5
+		elseif isSprinting or currentBuff > 1.0 then
+			swayBuff = 1.5
 		end
+
+		shotgunSwayX = shotgunSwayX + (shotgunSwayStepX * swayBuff * shotgunSwayDirectionX)
+		shotgunSwayY = shotgunSwayY + (shotgunSwayStepY * swayBuff * shotgunSwayDirectionY)
+
 		if shotgunSwayX >= shotgunMaxSwayX or shotgunSwayX <= shotgunMinSwayX then
-			shotgunSwayStepX = shotgunSwayStepX * -1
+			shotgunSwayDirectionX = shotgunSwayDirectionX * -1
 		end
 		if shotgunSwayX > shotgunMaxSwayX then
 			shotgunSwayX = shotgunMaxSwayX
@@ -346,13 +354,8 @@ function updateShotgun()
 			shotgunSwayX = shotgunMinSwayX
 		end
 
-		if isSprinting or currentBuff > 1.0 then
-			shotgunSwayY = shotgunSwayY + (shotgunSwayStepY * 1.5)
-		else
-			shotgunSwayY = shotgunSwayY + shotgunSwayStepY
-		end
 		if shotgunSwayY >= shotgunMaxSwayY or shotgunSwayY <= shotgunMinSwayY then
-			shotgunSwayStepY = shotgunSwayStepY * -1
+			shotgunSwayDirectionY = shotgunSwayDirectionY * -1
 		end
 		if shotgunSwayY > shotgunMaxSwayY then
 			shotgunSwayY = shotgunMaxSwayY
@@ -657,7 +660,9 @@ function update ()
 
 		walkSpeed = 0.02 * currentBuff * 1.3 * 5
 
-		if isSprinting then
+		if isPanting then
+			walkSpeed = walkSpeed / 2.5
+		elseif isSprinting then
 			walkSpeed = walkSpeed * 2.5
 		end
 
@@ -894,7 +899,6 @@ function update ()
 		
 			if stamina < 500 and not isPanting then
 				isPanting = true
-				pant:play(2)
 			end
 		
 			if stamina < 0 then
@@ -908,7 +912,6 @@ function update ()
 		
 		if stamina > 500 and isPanting then
 			isPanting = false
-			pant:stop()
 		end
 		
 		if not scareEvent and sanity < 80.0 and sanity > 70.0 then

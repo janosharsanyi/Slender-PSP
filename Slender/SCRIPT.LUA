@@ -41,9 +41,6 @@ pages = {image.load("./assets/pages/page1.png")
 ,image.load("./assets/pages/page8.png")
 }
 
-pant = sound.load("assets/sounds/breath.mp3")
-pant:loop()
-
 staticImage = image.load("assets/tex/tv_static_by_tbh_1138_d3jmbjq-sharedassets0.assets-69.png")
 staticImage:center()
 staticImage:scale(300)
